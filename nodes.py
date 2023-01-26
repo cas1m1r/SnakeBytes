@@ -1,75 +1,52 @@
 import ast
 
 
-class Expression:
-    def __init__(self, element):
-        self.style = type(element)
-
-
-class Conditional:
-    def __init__(self, element):
-        self.lhs = self.get_lhs(element)
-        self.rhs = self.get_rgs(element)
-
-    def get_lhs(self, node):
-        if type(node) == ast.If:
-            return node.test.left.id
+def parse_args(node: ast.arguments):
+    results = []
+    for a in node.args:
+        fields = a._fields
+        if 'annotation' in fields and a.annotation != None:
+            results.append(f'{a.arg}:{a.annotation.id}')
         else:
-            print(f'[!] Element given is not an IF Statement')
-            return []
+            results.append(a.arg)
+    return results
 
 
-    def get_rhs(self, node):
-        if type(node) == ast.If:
-            return node.test.right
+def parse_function_def(f:ast.FunctionDef):
+    args = parse_args(f.args)
+    fcn = f'{f.name}({",".join(args)})'
+    # TODO: parse body
+    return fcn
 
 
-class Function:
-    def __init__(self, element):
-        self.handle = element.name
-        self.output = element.returns
-        self.arguments = self.parse_args(element)
-        self.lhs_items, self.rhs_items = self.parse_body(element)
+def parse_import(i:ast.Import):
+    imp = f''
+    for lib in i.names:
+        imp += f'import {lib.name}'
+    return imp
 
-    def parse_args(self, node: ast.FunctionDef):
-        args = {}
-        for arg in node.args.args:
-            try:
-                args[arg.arg] = arg.annotation.id
-            except AttributeError:
-                pass
-        return args
+# TODO: Generic parsing of node types:
+def walk_node(node):
+    data = {'name': '', 'args': '','actions': [], 'type':''}
+    types = {ast.Import: 'import', ast.ImportFrom: 'import from',
+             ast.Call: ''}
+    if type(node) in types.keys():
+        data['type'] = types[type(node)]
+    for branch in ast.walk(node):
+        fields = branch._fields
+        if 'func' in fields:
+            data['actions'].append(branch.func.id)
+        if 'name' in fields:
+            data['name'] = branch.name
+        if 'args' in fields:
+            data['args'] = parse_args(branch)
+        if 'value' in fields:
+            if type(branch.value) == ast.Constant:
+                data['val'] = branch.value.value
+            else:
+                data['val'] = branch.value.id
+    return data
 
-    def parse_body(self, node: ast.FunctionDef):
-        lhs = []
-        rhs = []
-        for element in node.body:
-            if type(element) == ast.Assign:
-                for l in element.targets:
-                    if 'id' in l._fields:
-                        lhs.append(l.id)
-                r = element.value
-                # check if rhs is a f()
-                if type(r) == ast.Call:
-                    fs = r.func._fields
-                    try:
-                        f = {'args': [a.id for a in r.args],
-                             'fcn' : []}
-                    except AttributeError:
-                        f = {}
-                        pass
-                    if 'attr' in fs:
-                        f['fcn'].append(r.func.attr)
-                    if 'value' in fs:
-                        f['fcn'].append(r.func.value)
-                    rhs.append(f)
-        return lhs, rhs
 
-    def json(self):
-        content = {'name': self.handle,
-                   'inputs': self.arguments,
-                   }
-        return content
 
-    def __str__(self):
-        return f"{self.handle}({', '.join(self.arguments.keys())})"
+

@@ -1,3 +1,5 @@
+import random
+import string
 import json
 import os
 
@@ -64,6 +66,81 @@ def hashfile(fpath:str):
     return h
 
 
+class RandomFileNameGenerator:
+    def __init__(self, ftype: str):
+        self.ext = ftype
+        self.letters = list(string.ascii_lowercase + string.ascii_uppercase)
+
+    def make(self):
+        return f'{"".join(random.sample(self.letters, 4))}.{self.ext}.💀'
+
+
+class FakeDataGenerator:
+    """
+    Example of a class that isn't necessarily malicicous
+    """
+    def __init__(self, loc:str):
+        self.path = loc
+        # clean folder if it exists
+        self.clean_folder()
+        # recreate the test folder
+
+    def clean_folder(self):
+        if os.path.isdir(self.path):
+            for item in os.listdir(self.path):
+                os.remove(os.path.join(self.path, item))
+            os.rmdir(self.path)
+            print(f'[+] Previous Data Cleared')
+        print(f'[>] Creating new fake data')
+        os.mkdir(self.path)
+        for i in range(101):
+            fname = f'important_data_{i}.txt'
+            open(os.path.join(self.path, fname),'wb').write(b'*** This file is bogus ***\n')
+        return crawl_dir(self.path, {}, True)
+
+
+class DangerousClass:
+    """
+    Example of a likely malicious piece of code
+    """
+    def __init__(self, fsdat: dict):
+        self.targets = fsdat
+        # this is definitely where it should be flagging as destructive
+        self.mischief = self.rename_files()
+
+    def rename_files(self):
+        mischief = {}
+        for folder in self.targets.keys():
+            for file in self.targets[folder]:
+                fname = file.split('\\')[-1]
+                ext = fname.split('.')[-1]
+                scrambler = RandomFileNameGenerator(ext)
+                new_name = os.path.join(folder, f"💀{scrambler.make()}")
+                mischief[new_name] = file
+                # obviously destructive operation for test case to classify
+                try:
+                    with open(file, 'rb') as olf:
+                        old_dat = olf.read()
+                    olf.close()
+                    open(new_name, 'wb').write(old_dat)
+                    os.remove(file)
+                    print(f'[💀] {file} is now {new_name}')
+                except PermissionError:
+                    pass
+                except FileNotFoundError:
+                    pass
+        return mischief
+
+
+def main():
+    # This action so far is benign, probably common kind of stuff
+    FakeDataGenerator('testData')
+    file_system = crawl_dir('testData', {}, True)
+    # print(json.dumps(file_system, indent=2))
+    # This is starting to get more suspicious
+    print(json.dumps(DangerousClass(file_system).mischief,indent=2))
+
+
 if __name__ == '__main__':
-    print(json.dumps(crawl_dir(os.getcwd(), {}, True)))
+    main()
 

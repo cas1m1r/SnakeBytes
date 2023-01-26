@@ -1,7 +1,9 @@
+import test_case
 from nodes import *
 import json
 import ast
 import sys
+import os
 
 
 def read_tree(pycode: str):
@@ -14,14 +16,14 @@ def read_tree(pycode: str):
             parsed['imports'].append(element.names[0].name)
 
         # check for individual module imports
-        if type(element) == ast.ImportFrom:
+        elif type(element) == ast.ImportFrom:
             m = element.module
             for lib in element.names:
                 parsed['imports'].append('.'.join([m, lib.name]))
 
         # check for function definitions
         elif type(element) == ast.FunctionDef:
-            parsed['functions'].append(str(Function(element)))
+            parsed['functions'].append(parse_function_def(element))
 
         # check for class definitions
         elif type(element) == ast.ClassDef:
@@ -35,12 +37,14 @@ def explore_class(c: ast.ClassDef):
     for node in c.body:
         # look for function definitions
         if type(node) == ast.FunctionDef:
-            data['functions'].append(str(Function(node)))
+            data['functions'].append(str(parse_function_def(node)))
     return data
 
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
+        # from test_case import *
+        # test_case.FakeDataGenerator('testData')
         code = open('test_case.py', 'rb').read()
     elif sys.argv[1].split('.')[-1] != 'py':
         print('[!] Please give lumberjack a python file :(')
