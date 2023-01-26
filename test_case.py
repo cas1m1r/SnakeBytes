@@ -1,3 +1,4 @@
+from hashlib import sha256, md5
 import random
 import string
 import json
@@ -35,7 +36,7 @@ def crawl_dir(folder: str, data: dict, do_hash: bool):
     return data
 
 
-def exec(cmd:str):
+def exec(cmd: str):
     """
     execute a command on the host system
     :param cmd:
@@ -48,7 +49,7 @@ def exec(cmd:str):
     return result
 
 
-def hashfile(fpath:str):
+def hashfile(fpath: str):
     """
     :param fpath:
     path to file for hashing
@@ -67,6 +68,9 @@ def hashfile(fpath:str):
 
 
 class RandomFileNameGenerator:
+    """
+    this alone should be considered a safe class
+    """
     def __init__(self, ftype: str):
         self.ext = ftype
         self.letters = list(string.ascii_lowercase + string.ascii_uppercase)
@@ -77,20 +81,17 @@ class RandomFileNameGenerator:
 
 class FakeDataGenerator:
     """
-    Example of a class that isn't necessarily malicicous
+    Example of a class that probably isn't malicious
     """
     def __init__(self, loc:str):
         self.path = loc
-        # clean folder if it exists
-        self.clean_folder()
         # recreate the test folder
+        self.create_folder()
 
-    def clean_folder(self):
+    def create_folder(self):
         if os.path.isdir(self.path):
-            for item in os.listdir(self.path):
-                os.remove(os.path.join(self.path, item))
-            os.rmdir(self.path)
-            print(f'[+] Previous Data Cleared')
+            print(f'[+] Fake Data already exists!')
+            return
         print(f'[>] Creating new fake data')
         os.mkdir(self.path)
         for i in range(101):

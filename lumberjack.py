@@ -6,21 +6,20 @@ import sys
 import os
 
 
-def read_tree(pycode: str):
-    parsed = {'imports': [], 'functions': [], 'classes': []}
+def read_tree(pycode: bytes):
+    parsed = {'imports': [], 'functions': [], 'classes': [], 'libraries': []}
     tree = ast.parse(pycode)
     body = tree.body
     for element in body:
         # check for import statements
         if type(element) == ast.Import:
-            parsed['imports'].append(element.names[0].name)
-
+            parsed['imports'].append(parse_import(element))
+            for lib in element.names:
+                parsed['libraries'].append(lib.name)
         # check for individual module imports
         elif type(element) == ast.ImportFrom:
-            m = element.module
-            for lib in element.names:
-                parsed['imports'].append('.'.join([m, lib.name]))
-
+            parsed['imports'].append(parse_import_from(element))
+            parsed['libraries'].append(element.module)
         # check for function definitions
         elif type(element) == ast.FunctionDef:
             parsed['functions'].append(parse_function_def(element))
@@ -28,7 +27,9 @@ def read_tree(pycode: str):
         # check for class definitions
         elif type(element) == ast.ClassDef:
             parsed['classes'].append(explore_class(element))
-        # TODO: look for conditionals (will likely be __name__ == '__main__' at this level)
+        # look for conditionals (will likely be __name__ == '__main__' at this level)
+        elif type(element) == ast.If:
+            parsed['if_main'].append(parse_if_main(element))
     return parsed
 
 
@@ -50,8 +51,6 @@ if __name__ == '__main__':
         print('[!] Please give lumberjack a python file :(')
         exit()
     else:
-        code = open(sys.argv[1],'rb').read()
+        code = open(sys.argv[1], 'rb').read()
     # parse and show the summary of the code
     print(json.dumps(read_tree(code), indent=2))
-
-
