@@ -5,8 +5,12 @@ def parse_args(node: ast.arguments):
     results = []
     for a in node.args:
         fields = a._fields
-        if 'annotation' in fields and a.annotation != None:
-            results.append(f'{a.arg}: {a.annotation.id}')
+        if 'annotation' in fields and type(a.annotation) != None:
+            try:
+                results.append(f'{a.arg}: {a.annotation.id}')
+            except AttributeError:
+                print(f'{a}:\t1{a.annotation}')
+                pass
         elif 'arg' in fields:
             results.append(a.arg)
         elif 'id' in fields:
@@ -39,17 +43,24 @@ def parse_function_def(f:ast.FunctionDef):
 
 def parse_import(i: ast.Import):
     imps = []
-    for lib in i.names:
-        imps.append(lib.name)
-    return imps
+    if len(i.names) > 1:
+        for lib in i.names:
+            imps.append(lib.name)
+        return imps
+    else:
+        return i.names[0].name
 
 
 def parse_import_from(i:ast.ImportFrom):
     m = i.module
     imports = []
     for lib in i.names:
-        imports.append(lib.name)
-    return [m, imports]
+        try:
+            imports.append('.'.join([m, lib.name]))
+        except TypeError:
+            imports.append(lib.name)
+            pass
+    return imports
 
 
 def parse_if_main(i: ast.If):
@@ -60,24 +71,44 @@ def parse_if_main(i: ast.If):
 
 def parse_if(node: ast.If):
     ops = {ast.In: ' in ', ast.NotIn: ' not in ', ast.Eq: ' == ', ast.NotEq: ' != ',
-           ast.And: ' and '}
-    data = ''
-    if 'left' in node.test._fields:
-        lhs = node.test.left
-        test = ''
-        for v in node.test.ops:
-            t = type(v)
-            if t in ops.keys():
-                test += ops[t]
-        for op in node.test.comparators:
-            T = type(op)
-            if T == ast.Call:
-                rhs = '.'.join([op.func.value.id, op.func.attr])
-                data = f'if {lhs.id} {test} {rhs}()'
-            else:
-                print(f'Havent created if {T}')
-    elif type(node.test) != ast.Call and type(node.test.op) in ops.keys():
-        data = ops[type(node.test.op)]
+           ast.And: ' and ', ast.Gt: '>', ast.Lt: '<', ast.GtE: '>=', ast.LtE: '<='}
+    data = {'statement': '', 'body': []}
+    try:
+        if 'left' in node.test._fields:
+            lhs = node.test.left
+            if 'id' in lhs._fields:
+                LHS = lhs.id
+            elif type(lhs) == ast.Call:
+                LHS = unpack_attribute(lhs)
+            elif type(lhs) == ast.Name:
+                LHS = lhs.id
+            elif type(lhs) == ast.Attribute:
+                LHS = unpack_attribute(lhs)
+            test = ''
+            for v in node.test.ops:
+                t = type(v)
+                if t in ops.keys():
+                    test += ops[t]
+            for op in node.test.comparators:
+                T = type(op)
+                if T == ast.Call:
+                    rhs = '.'.join([op.func.value.id, op.func.attr])
+                    data['statement'] = f'if {LHS} {test} {rhs}()'
+                else:
+                    rhs = ''
+                    for r in node.test.comparators:
+                        rhs += f'{r.value}'
+                    data['statement'] = f'if {LHS} {test} {rhs}'
+                # else:
+                #     print(f'Havent created if {T}')
+        elif type(node.test) != ast.Call and 'op' in node.test._fields and type(node.test.op) in ops.keys():
+            data['statement'] = ops[type(node.test.op)]
+
+
+    except AttributeError:
+        pass
+    # TODO PARSE BODY
+    data['body'] = parse_body(node.body)
     return data
 
 
@@ -93,6 +124,7 @@ def expand_body(body:list):
             data['code'].append(actions[T](node))
         else:
             print(f'No Method for {T}')
+    # TODO: Its bad syntax but people could include import statements elsewhere!
     return data
 
 
@@ -109,26 +141,29 @@ def expand_try(t: ast.Try):
 
 def parse_for_loop(f: ast.For):
     data = {}
-    loopvar = f.target.id
-    iterable = f.iter
-    data['loop_element'] = loopvar
-    # parse the iterable portion of forloop
-    if type(f.iter) == ast.Call:
-        if 'attr' in f.iter.func._fields and 'id' in f.iter.func.value._fields:
-            able = f'{".".join([f.iter.func.value.id, f.iter.func.attr])}('
-        elif type(f.iter.func) == ast.Attribute:
-            able = f'{unpack_attribute(f.iter.func)}('
-        else:
-            able = f'{f.iter.func.id}('
-        data['iterable'] = able
-        for arg in f.iter.args:
-            if type(arg) == ast.Constant:
-                data['iterable'] = f'{arg.value}'
-            elif 'attr' in arg._fields:
-                data['iterable'] += f'{arg.attr}, '
-            elif type(arg) == ast.Call:
-                data['iterable'] += f'{parse_args(arg)}, '
-        data['iterable'] += ')'
+    try:
+        loopvar = f.target.id
+        iterable = f.iter
+        data['loop_element'] = loopvar
+        # parse the iterable portion of forloop
+        if type(f.iter) == ast.Call:
+            if 'attr' in f.iter.func._fields and 'id' in f.iter.func.value._fields:
+                able = f'{".".join([f.iter.func.value.id, f.iter.func.attr])}('
+            elif type(f.iter.func) == ast.Attribute:
+                able = f'{unpack_attribute(f.iter.func)}('
+            else:
+                able = f'{f.iter.func.id}('
+            data['iterable'] = able
+            for arg in f.iter.args:
+                if type(arg) == ast.Constant:
+                    data['iterable'] = f'{arg.value}'
+                elif 'attr' in arg._fields:
+                    data['iterable'] += f'{arg.attr}, '
+                elif type(arg) == ast.Call:
+                    data['iterable'] += f'{parse_args(arg)}, '
+            data['iterable'] += ')'
+    except AttributeError:
+        pass
     return data
 
 

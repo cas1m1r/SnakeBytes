@@ -8,18 +8,20 @@ import os
 
 def read_tree(pycode: bytes):
     parsed = {'imports': [], 'functions': [], 'classes': [], 'libraries': [], 'if_main': []}
-    tree = ast.parse(pycode)
+    try:
+        tree = ast.parse(pycode)
+    except:
+        return parsed
     body = tree.body
-    imports = []
     for element in body:
         # check for import statements
         if type(element) == ast.Import:
-            imports.append(parse_import(element))
+            parsed['imports'].append(parse_import(element))
             for lib in element.names:
                 parsed['libraries'].append(lib.name)
         # check for individual module imports
         elif type(element) == ast.ImportFrom:
-            imports.append(parse_import_from(element))
+            parsed['imports'].append(parse_import_from(element))
             parsed['libraries'].append(element.module)
         # check for function definitions
         elif type(element) == ast.FunctionDef:
@@ -34,9 +36,6 @@ def read_tree(pycode: bytes):
         # look for conditionals (will likely be __name__ == '__main__' at this level)
         elif type(element) == ast.If:
             parsed['if_main'].append(parse_if_main(element))
-    for ln in imports:
-        for i in ln: 
-            parsed['imports'].append(i)
     return parsed
 
 
@@ -50,6 +49,27 @@ def explore_class(c: ast.ClassDef):
             content[fsig] = lines
             data['functions'].append(str(fsig))
     return data, content
+
+
+def process_file(filepath:str, save:bool):
+    # make sure file exists
+    if not os.path.isfile(filepath):
+        print(f'[X] Cannot find {filepath}')
+        return []
+    # Read in file
+    code = open(filepath, 'rb').read()
+    # parse and show the summary of the code
+    tree = read_tree(code)
+    tree['warnings'] = Defender(tree).warnings
+    filename = f"{filepath.split('/')[-1].split('.')[0]}_summary.json"
+    if save:
+        # dump results
+        open(filename, 'w').write((json.dumps(tree, indent=2)))
+    # show warnings
+    if len(tree['warnings']):
+        for warning in tree['warnings']:
+            print(f'[{filepath}]: {warning}')
+    return tree, filename
 
 
 if __name__ == '__main__':
@@ -72,4 +92,4 @@ if __name__ == '__main__':
     if len(tree['warnings']):
         for warning in tree['warnings']:
             print(f'[{file_in}]: {warning}')
-    open(filename, 'w').write((json.dumps(tree, indent=2)))
+    open(filename, 'w').write((json.dumps(tree, indent=1)))
