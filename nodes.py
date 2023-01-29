@@ -9,7 +9,7 @@ def parse_args(node: ast.arguments):
             try:
                 results.append(f'{a.arg}: {a.annotation.id}')
             except AttributeError:
-                print(f'{a}:\t1{a.annotation}')
+                # print(f'{a}:\t1{a.annotation}')
                 pass
         elif 'arg' in fields:
             results.append(a.arg)
@@ -24,12 +24,11 @@ def parse_body(body: list):
     elements = []
     actions = {ast.arguments: parse_args, ast.FunctionDef: parse_function_def,
                ast.Import: parse_import, ast.ImportFrom: parse_import_from,
-               ast.For: parse_for_loop}
+               ast.For: parse_for_loop, ast.Assign: expand_assignment,
+               ast.Expr: expand_expr}
     for node in body:
         T = type(node)
-        if T not in actions.keys():
-            print(f'Unknown type {T}')
-        else:
+        if T in actions.keys():
             elements.append(actions[T](node))
     return elements
 
@@ -84,6 +83,10 @@ def parse_if(node: ast.If):
                 LHS = lhs.id
             elif type(lhs) == ast.Attribute:
                 LHS = unpack_attribute(lhs)
+            elif type(lhs) == ast.Compare:
+                LHS = lhs.value
+            elif type(lhs) == ast.Constant:
+                LHS = lhs.value
             test = ''
             for v in node.test.ops:
                 t = type(v)
@@ -92,13 +95,17 @@ def parse_if(node: ast.If):
             for op in node.test.comparators:
                 T = type(op)
                 if T == ast.Call:
-                    rhs = '.'.join([op.func.value.id, op.func.attr])
-                    data['statement'] = f'if {LHS} {test} {rhs}()'
+                    rhs = f'{unpack_attribute(op.func)}({unpack_attribute(op.args[0])})'
+                    data['statement'] = f'if {LHS} {test} {rhs}'
                 else:
                     rhs = ''
                     for r in node.test.comparators:
-                        rhs += f'{r.value}'
+                        # if 'value' in r._fields:
+                        #     rhs += f'{r.value}'
+                        if type(r) == ast.Call:
+                            rhs += unpack_attribute(r)
                     data['statement'] = f'if {LHS} {test} {rhs}'
+
                 # else:
                 #     print(f'Havent created if {T}')
         elif type(node.test) != ast.Call and 'op' in node.test._fields and type(node.test.op) in ops.keys():
@@ -117,13 +124,13 @@ def expand_body(body:list):
     actions = {ast.arguments: parse_args, ast.FunctionDef: parse_function_def,
                ast.Import: parse_import, ast.ImportFrom: parse_import_from,
                ast.Expr: expand_expr, ast.If: parse_if, ast.Try: expand_try,
-               ast.For: parse_for_loop}
+               ast.For: parse_for_loop, ast.Assign: expand_assignment}
     for node in body:
         T = type(node)
         if T in actions.keys():
             data['code'].append(actions[T](node))
-        else:
-            print(f'No Method for {T}')
+        # else:
+        #     print(f'No Method for {T}')
     # TODO: Its bad syntax but people could include import statements elsewhere!
     return data
 
@@ -172,8 +179,41 @@ def unpack_attribute(a : ast.Attribute):
     for level in ast.walk(a):
             items = level._fields
             if 'attr' in items:
-                attr.append(level.attr)
+                attr.append(f'{level.attr}')
             elif 'id' in items:
-                attr.append(level.id)
+                attr.append(f'{level.id}')
+            elif 'value' in items:
+                attr.append(f'{level.value}')
     attr.reverse()
     return '.'.join(attr)
+
+
+def expand_assignment(a: ast.Assign):
+    expr = ''
+    lhs = []
+    rhs = []
+    for node in ast.walk(a):
+        items = node._fields
+        if 'id' in items:
+            rhs.append(node.id)
+        if 'targets' in items:
+            if 'args' in items:
+                rhs.append(parse_args(node))
+            if 'attr' in node._fields:
+                rhs.append(node.target.attr)
+            if 'id' in items:
+                rhs.append(node.target.id)
+            for target in node.targets:
+                if type(target) == ast.Name:
+                    lhs.append(f'{target.id}')
+        if 'value' in items:
+            if type(node.value) == ast.Call:
+                if 'func' in node.value._fields:
+                    rhs.append(f'{unpack_attribute(node.value)}('.replace('. ',''))
+                for arg in node.value.args:
+                    rhs.append(f'{unpack_attribute(arg)}')
+                rhs.append(')')
+            elif type(node.value) == ast.Constant:
+                rhs.append(f'{node.value.value}')
+    return f'{" ".join(lhs)} = {"".join(rhs)}'
+

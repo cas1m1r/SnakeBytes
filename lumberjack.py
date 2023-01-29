@@ -7,7 +7,7 @@ import os
 
 
 def read_tree(pycode: bytes):
-    parsed = {'imports': [], 'functions': [], 'classes': [], 'libraries': [], 'if_main': []}
+    parsed = {'imports': [], 'functions': [], 'classes': [], 'libraries': [], 'if_main': [],'warnings': []}
     try:
         tree = ast.parse(pycode)
     except:
@@ -51,7 +51,7 @@ def explore_class(c: ast.ClassDef):
     return data, content
 
 
-def process_file(filepath:str, save:bool):
+def process_file(filepath: str, config: dict, save: bool):
     # make sure file exists
     if not os.path.isfile(filepath):
         print(f'[X] Cannot find {filepath}')
@@ -60,13 +60,13 @@ def process_file(filepath:str, save:bool):
     code = open(filepath, 'rb').read()
     # parse and show the summary of the code
     tree = read_tree(code)
-    tree['warnings'] = Defender(tree).warnings
+    tree['warnings'] = Defender(tree, config).warnings
     filename = f"{filepath.split('/')[-1].split('.')[0]}_summary.json"
     if save:
         # dump results
         open(filename, 'w').write((json.dumps(tree, indent=2)))
     # show warnings
-    if len(tree['warnings']):
+    if len(tree['warnings'])>1:
         for warning in tree['warnings']:
             print(f'[{filepath}]: {warning}')
     return tree, filename
@@ -86,7 +86,8 @@ if __name__ == '__main__':
         code = open(file_in, 'rb').read()
     # parse and show the summary of the code
     tree = read_tree(code)
-    tree['warnings'] = Defender(tree).warnings
+    for warning in Defender(tree,{}).warnings:
+        tree['warnings'].append(warning)
     # dump results
     filename = f"{file_in.split('.')[0]}_summary.json"
     if len(tree['warnings']):
